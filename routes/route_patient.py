@@ -1,9 +1,15 @@
 from fastapi import APIRouter, Path, Body, HTTPException
+from fastapi.encoders import jsonable_encoder
 from schemas.patient import Paciente
 import json
 from fastapi.responses import JSONResponse
 from typing import Optional, List
-from utils.data_loader import load_dnis
+from services.patient import PatientService
+from services.medic import MedicSerivce
+from models.patient import Patient as PatientModel
+from config.database import Session
+
+
 
 patient_router = APIRouter()
 
@@ -20,11 +26,12 @@ patient_router = APIRouter()
 )
 def show_patients() -> List[Paciente]:
     try:
-        with open("patients.json", "r") as file:
-            patients = json.load(file)
-            return JSONResponse(status_code=200, content=patients)
-    except FileNotFoundError:
-        return {"error" : "El archivo 'patients.json' no existe."}
+        db = Session()
+        result = PatientService(db).get_patients()
+        return JSONResponse(status_code=200, content=jsonable_encoder(result))
+
+    except Exception as e:
+        return {"error" : "{e}"}
 
 ## Registrar Paciente
 @patient_router.post(
@@ -34,38 +41,26 @@ def show_patients() -> List[Paciente]:
 )
 def create_patient(patient : Paciente):
 
-    pacientes_dnis = load_dnis("patients.json", "dni")
-    medicos_dnis = load_dnis("medics.json", "dni")
-
-    if patient.dni in pacientes_dnis:
-        return JSONResponse(status_code=400, content={"message": f"DNI {patient.dni} ya está registrado como paciente."})
-    if patient.dni in medicos_dnis:
-        return JSONResponse(status_code=400, content={"message": f"DNI {patient.dni} ya está registrado como médico."})
-
     try:
-        with open("patients.json",'r+') as file:
-            try:
-                patients = json.load(file)
-            except json.JSONDecodeError:
-                patients = []
+        with Session() as db:
+
+            pacientes_dnis = PatientService(db).get_dnis()
+            medicos_dnis = MedicSerivce(db).get_dnis()
+
+            if patient.dni in pacientes_dnis:
+                return JSONResponse(status_code=400,
+                                    content={"message": f"DNI {patient.dni} ya está registrado como paciente."})
             
-            patient_dict = patient.dict()
-            if patient_dict["fecha_nacimiento"]:
-                patient_dict["fecha_nacimiento"] = patient_dict["fecha_nacimiento"].isoformat()
+            if patient.dni in medicos_dnis:
+                return JSONResponse(status_code=400, 
+                                    content={"message": f"DNI {patient.dni} ya está registrado como médico."})
 
-            patients.append(patient_dict)
-            file.seek(0)
-            file.truncate()
-
-            json.dump(patients, file, indent=4)
-
-        return JSONResponse(status_code=200, content={"message": "Se ha registrado el paciente"})
-
-    except FileNotFoundError:
-        return {"message": "El archivo 'patients.json' no existe."}
+            PatientService(db).create_patient(patient)
+            return JSONResponse(status_code=201, 
+                                content={"message": "Se ha registrado el paciente"})
     
     except Exception as e:
-        return {"error" : " Ha ocurrido un error : "+str(e)}
+        return {"error" : " Ha ocurrido un error : "+str(e)},404
     
 ## Obtener Paciente
 @patient_router.get(
@@ -75,14 +70,15 @@ def create_patient(patient : Paciente):
 )
 def get_patient(dni: str =Path(description="DNI of a patient")) -> Paciente:
     try:
-        with open("patients.json", "r") as file:
-            patients = json.load(file)
-            for patient in patients:
-                if patient['dni'] == dni:
-                    return JSONResponse(status_code=200, content=patient)
-            raise HTTPException(status_code=404, detail="Paciente no encontrado")
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="El archivo 'patients.json' no existe.")
+        with Session() as db:
+            result = PatientService(db).get_patient_by_dni(dni)
+            if not result:
+                raise HTTPException(status_code=404, detail="Paciente no encontrado")
+            
+            return JSONResponse(status_code=200, content=jsonable_encoder(result))
+        
+    except Exception as e:
+        return {"error" : " Ha ocurrido un error : "+str(e)}
     
 ## Eliminar Paciente
 @patient_router.delete(
@@ -92,27 +88,16 @@ def get_patient(dni: str =Path(description="DNI of a patient")) -> Paciente:
 )
 def delete_patient(dni: str = Path(description="DNI of a patient")):
     try:
-        with open("patients.json", "r") as file:
-            patients = json.load(file)
+        with Session() as db:
+            result = PatientService(db).get_patient_by_dni(dni)
+            if not result:
+                raise HTTPException(status_code=404, detail="Paciente no encontrado")
             
-            patient_found = None
-            for patient in patients:
-                if patient['dni'] == dni:
-                    patient_found = patient 
-                    break
-
-        if not patient_found:
-            raise HTTPException(status_code=404, detail="Paciente no encontrado")
-
-        patients = [patient for patient in patients if patient['dni'] != dni]
-
-        with open("patients.json", 'w') as file:
-            json.dump(patients, file, indent=4)
-
-            return JSONResponse(status_code=200, content={"message" : " Paciente eliminado con éxito"})
-
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="El archivo 'patients.json' no existe.")
+            PatientService(db).delete_patient(dni)
+            return JSONResponse(status_code=200, content={"message": "Se ha eliminado el paciente"})
+        
+    except Exception as e:
+        return {"error" : " Ha ocurrido un error : "+str(e)}
     
 ## Actualizar Paciente
 @patient_router.put(
@@ -122,33 +107,13 @@ def delete_patient(dni: str = Path(description="DNI of a patient")):
     )
 def update_patient(dni: str = Path(description="DNI of a patient"), patient_u: Paciente = Body(...)):
     try:
-        with open("patients.json", "r") as file:
-            patients = json.load(file)
+        with Session() as db:
+            result = PatientService(db).get_patient_by_dni(dni)
+            if not result:
+                raise HTTPException(status_code=404, detail="Paciente no encontrado")
             
-            patient_found = None
-            for patient in patients:
-                if patient['dni'] == dni:
-                    patient_found = patient
-                    break
-            
-            patient_found['nombre'] = patient_u.nombre
-            patient_found['apellido'] = patient_u.apellido
-            patient_found['email'] = patient_u.email
-            patient_found['fecha_nacimiento'] = str(patient_u.fecha_nacimiento)
-
-        with open("patients.json", "w") as file:
-            json.dump(patients, file, indent=4)
-            return JSONResponse(status_code=200, content={"message" : " Paciente actualizado con éxito"})
-
-
-        if not patient_found:
-            raise HTTPException(status_code=404, detail="Paciente no encontrado")
-
-        with open("patients.json", 'w') as file:
-            json.dump(patients, file, indent=4)
-
-            return JSONResponse(status_code=200, content={"message" : " Paciente actualizado con éxito"})
-
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="El archivo 'patients.json' no existe.")
-    
+            PatientService(db).update_patient(dni, patient_u)
+            return JSONResponse(status_code=200, content={"message": "Se ha modificado el paciente"})
+        
+    except Exception as e:
+        return {"error" : " Ha ocurrido un error : "+str(e)}

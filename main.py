@@ -19,6 +19,9 @@ from routes.route_user import user_router
 # From Middleware directory
 from middlewares.error_handler import ErrorHandler
 
+# From Config
+from config.database import engine, Base
+
 
 app = FastAPI()
 app.title = "API de Citas Medicas"
@@ -29,6 +32,9 @@ app.include_router(user_router)
 app.include_router(patient_router)
 app.include_router(medic_router)
 app.include_router(cita_router)
+
+# DataBase
+Base.metadata.create_all(bind=engine)
 
 # Routes    
 @app.get(
