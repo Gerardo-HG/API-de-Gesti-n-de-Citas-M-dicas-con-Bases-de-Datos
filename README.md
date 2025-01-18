@@ -66,32 +66,5 @@ uvicorn main:app --reload
 - **POST /citas**: Registrar una nueva cita.
 - **GET /citas**: Obtener todas las citas.
 
-## Estructura del Proyecto
 
-API-CitasMedicas/
-│
-├── main.py # Archivo principal para iniciar la API
-│
-├── routes/ # Rutas de la API
-│ ├── routes_pacientes.py # Rutas relacionadas con pacientes
-│ ├── routes_medicos.py # Rutas relacionadas con médicos
-│ ├── routes_citas.py # Rutas relacionadas con citas médicas
-│
-├── models/ # Modelos de base de datos
-│ ├── paciente.py # Modelo de paciente en base de datos
-│ ├── medico.py # Modelo de médico en base de datos
-│ ├── cita.py # Modelo de cita médica en base de datos
-│
-├── utils/ # Funciones auxiliares y utilidades
-│ ├── jwt_manager.py # Manejo de autenticación JWT
-│ ├── validators.py # Validación de datos compartidos (opcional)
-│
-├── database/ # Configuración de la base de datos
-│ ├── config.py # Configuración de conexión a la base de datos
-│ ├── session.py # Sesiones de base de datos
-│
-├── requirements.txt # Dependencias del proyecto
-│
-├── README.md # Documentación del proyecto
-│
-└── LICENSE # Licencia del proyecto
+
